@@ -1,4 +1,4 @@
-package entity
+package model
 
 type (
 	User struct {
@@ -6,5 +6,4 @@ type (
 		Username string
 		Password string
 	}
-	
 )

@@ -1,36 +1,41 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/labstack/echo/v4"
 	"github.com/tiagods/auth/internal/adapter/web/presenter/request"
-	service "github.com/tiagods/auth/internal/domain/services"
+	"github.com/tiagods/auth/internal/domain/service"
 	"github.com/tiagods/auth/internal/infra/utils"
-	"net/http"
 )
 
-func Register(c echo.Context) error {
+type (
+	TokenHander struct {
+		service service.TokenService
+	}
+)
+
+func NewTokenHandler(service service.TokenService) *TokenHander {
+	return &TokenHander{service: service}
+}
+
+func (h TokenHander) Register(c echo.Context) error {
 	return nil
 }
 
-func Login(c echo.Context) error {
+func (h TokenHander) Login(c echo.Context) error {
 	login := &request.Login{}
 
 	if err := extractPresenter(c, login); err != nil {
 		return err
 	}
-	for i, usr := range users {
-		if usr.Username == login.Username &&
-			usr.Password == login.Password {
 
-			tokens, err := generateTokenPair(i, usr)
-			if err != nil {
-				return err
-			}
-			return c.JSON(http.StatusOK, tokens)
-		}
+	result, err := h.service.Login(c.Request().Context(), login)
+	if err != nil {
+		return utils.JSON(c, 0, err)
 	}
 
-	return echo.ErrUnauthorized
+	return c.JSON(http.StatusCreated, result)
 }
 
 func extractPresenter(c echo.Context, i interface{}) error {
@@ -45,13 +50,13 @@ func extractPresenter(c echo.Context, i interface{}) error {
 	return nil
 }
 
-func RefreshToken(c echo.Context) error {
+func (h TokenHander) RefreshToken(c echo.Context) error {
 	tokenReq := &request.RefreshToken{}
 	if err := extractPresenter(c, tokenReq); err != nil {
 		return err
 	}
 
-	result, err := service.RefreshToken(tokenReq)
+	result, err := h.service.RefreshToken(c.Request().Context(), tokenReq)
 	if err != nil {
 		return utils.JSON(c, 0, err)
 	}
