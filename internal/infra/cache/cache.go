@@ -1,9 +1,17 @@
 package cache
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type Repository interface {
-	Set(key string, i interface{}, duration time.Duration) error
-	SetNX(key string, i interface{}, duration time.Duration) error
-	Get(key string) (interface{}, error)
+	IsAlive() bool
+	Set(ctx context.Context, key string, i interface{}, duration time.Duration) error
+	SetNX(ctx context.Context, key string, i interface{}, duration time.Duration) error
+	Get(ctx context.Context, key string, output interface{}) error
+}
+
+func NewCache() Repository {
+	return NewRedis()
 }

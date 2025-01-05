@@ -11,32 +11,22 @@ import (
 	"github.com/tiagods/auth/internal/infra/httperrors"
 )
 
-type (
-	databaseRepository struct {
-		db *sql.DB
-	}
-)
-
-func NewDatabaseRepository(db *sql.DB) Repository {
-	return databaseRepository{db: db}
-}
-
-func (m databaseRepository) FindRefreshToken(ctx context.Context, refreshToken string) (model.User, error) {
+func (r *repository) FindRefreshToken(ctx context.Context, refreshToken string) (model.User, error) {
 	return model.User{}, nil
 
 }
-func (m databaseRepository) UpdateRefreshToken(ctx context.Context, userId string, newToken string) error {
+func (r *repository) UpdateRefreshToken(ctx context.Context, userId string, newToken string) error {
 	return nil
 }
 
-func (m databaseRepository) RegisterAccount(ctx context.Context, user entity.User) error {
+func (r *repository) RegisterAccount(ctx context.Context, user entity.User) error {
 	return nil
 }
 
-func (m databaseRepository) FindByUserAndPassword(ctx context.Context, username string, password string) (model.User, error) {
+func (r *repository) FindByUserAndPassword(ctx context.Context, username string, password string) (model.User, error) {
 	var user model.User
 	query := `SELECT username, password FROM Users WHERE username=? AND password=?`
-	stmt, err := m.db.PrepareContext(ctx, query)
+	stmt, err := r.db.PrepareContext(ctx, query)
 	if err != nil {
 		return model.User{}, err
 	}

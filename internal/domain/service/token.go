@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"time"
-
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/gommon/log"
 	"github.com/tiagods/auth/internal/adapter/database"
 	"github.com/tiagods/auth/internal/adapter/web/presenter/request"
@@ -15,6 +12,9 @@ import (
 	"github.com/tiagods/auth/internal/domain/entity"
 	"github.com/tiagods/auth/internal/infra/cache"
 	"github.com/tiagods/auth/internal/infra/httperrors"
+
+	"net/http"
+	"time"
 )
 
 type (
@@ -31,8 +31,10 @@ type (
 
 var errLoginRequired = errors.New("login required")
 
-func NewTokenService() *tokenService {
-	return &tokenService{}
+func NewTokenService(repo database.Repository, cache cache.Repository) TokenService {
+	return &tokenService{
+		repo, cache,
+	}
 }
 
 func (t *tokenService) WithRepository(repo database.Repository) *tokenService {
@@ -51,7 +53,7 @@ func (t *tokenService) Login(ctx context.Context, login *request.Login) (respons
 		return response.Token{}, err
 	}
 	user := &entity.User{ID: result.ID, Username: result.Username}
-	token, err := t.generateTokenPair(user, false)
+	token, err := t.generateTokenPair(ctx, user, false)
 	if err != nil {
 		return response.Token{}, err
 	}
@@ -96,7 +98,7 @@ func (t *tokenService) updateToken(ctx context.Context, refreshToken entity.Refr
 		return response.Token{}, err
 	}
 
-	return t.generateTokenPair(user, true)
+	return t.generateTokenPair(ctx, user, true)
 }
 
 func (t *tokenService) getTokenByRefresh(ctx context.Context, refreshToken entity.RefreshToken) (*entity.User, error) {
@@ -109,7 +111,7 @@ func (t *tokenService) getTokenByRefresh(ctx context.Context, refreshToken entit
 	refreshToken.UserID = usr.ID
 
 	notfound := cache.ErrNotFound
-	_, err = t.cache.Get(refreshToken.RefreshToken)
+	err = t.cache.Get(ctx, refreshToken.RefreshToken, &entity.User{})
 	if err != nil {
 		if errors.Is(err, notfound) {
 			return nil, httperrors.NewHttpError(http.StatusUnauthorized, errLoginRequired.Error(), errLoginRequired)
@@ -119,21 +121,16 @@ func (t *tokenService) getTokenByRefresh(ctx context.Context, refreshToken entit
 	return usr, nil
 }
 
-func (t *tokenService) generateTokenPair(user *entity.User, updateToken bool) (response.Token, error) {
+func (t *tokenService) generateTokenPair(ctx context.Context, user *entity.User, updateToken bool) (response.Token, error) {
 	sr := entity.Token{UserID: user.ID}
-	notfound := cache.ErrNotFound
-
 	isGenerateToken := updateToken
-	rs, err := t.cache.Get(sr.GetKey())
-	if errors.Is(err, notfound) {
+
+	result := &entity.Token{}
+	err := t.cache.Get(ctx, sr.GetKey(), result)
+	if errors.Is(err, cache.ErrNotFound) {
 		isGenerateToken = true
 	} else {
-		token, ok := rs.(*entity.Token)
-		if !ok {
-			isGenerateToken = true
-		} else {
-			sr.Token = token.Token
-		}
+		sr.Token = result.Token
 	}
 
 	if isGenerateToken {
@@ -152,7 +149,7 @@ func (t *tokenService) generateTokenPair(user *entity.User, updateToken bool) (r
 
 		sr.Token = signature
 
-		err = t.cache.Set(sr.GetKey(), sr, time.Second*30)
+		err = t.cache.Set(ctx, sr.GetKey(), sr, time.Second*30)
 		if err != nil {
 			return response.Token{}, err
 		}
@@ -160,16 +157,12 @@ func (t *tokenService) generateTokenPair(user *entity.User, updateToken bool) (r
 
 	refresh := &entity.RefreshToken{UserID: user.ID}
 	isGenerateRefreshToken := false
-	rsRefresh, err := t.cache.Get(refresh.GetKey())
-	if errors.Is(err, notfound) {
+	rsRefresh := &entity.RefreshToken{}
+	err = t.cache.Get(ctx, refresh.GetKey(), rsRefresh)
+	if errors.Is(err, cache.ErrNotFound) {
 		isGenerateRefreshToken = true
 	} else {
-		tokenRef, ok := rsRefresh.(*entity.RefreshToken)
-		if !ok {
-			isGenerateRefreshToken = true
-		} else {
-			refresh.RefreshToken = tokenRef.RefreshToken
-		}
+		refresh.RefreshToken = rsRefresh.RefreshToken
 	}
 
 	if isGenerateRefreshToken {
@@ -185,12 +178,12 @@ func (t *tokenService) generateTokenPair(user *entity.User, updateToken bool) (r
 		}
 		refresh.RefreshToken = signature
 
-		err = t.cache.Set(refresh.GetKey(), sr, time.Hour*24)
+		err = t.cache.Set(ctx, refresh.GetKey(), sr, time.Hour*24)
 		if err != nil {
 			return response.Token{}, err
 		}
 
-		err = t.repo.UpdateRefreshToken(context.Background(), refresh.UserID, refresh.RefreshToken)
+		err = t.repo.UpdateRefreshToken(ctx, refresh.UserID, refresh.RefreshToken)
 		if err != nil {
 			return response.Token{}, err
 		}

@@ -29,16 +29,17 @@ func StartApi() {
 		Timeout: 30 * time.Second,
 	}))
 
+	e.Use(tokenMiddleware.ServerHeader)
+	e.HTTPErrorHandler = tokenMiddleware.HTTPErrorHandler
 	e.Validator = tokenMiddleware.NewValidator()
 
-	repo := database.NewDatabaseRepository(db)
-	memory := cache.NewMemoryCache()
-	tokenService := service.NewTokenService().WithRepository(repo).WithCache(memory)
+	repo := database.NewRepository(db)
+	cacheRepo := cache.NewCache()
+	tokenService := service.NewTokenService(repo, cacheRepo)
 
 	tokenHandler := handler.NewTokenHandler(tokenService)
 
 	e.GET("/health", handler.Health)
-
 	e.POST("/login", tokenHandler.Login)
 	e.POST("/register", tokenHandler.Register)
 	e.GET("/private", tokenMiddleware.Private, tokenMiddleware.IsLoggedIn)

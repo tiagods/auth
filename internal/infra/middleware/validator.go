@@ -1,4 +1,4 @@
-package token_middleware
+package middleware
 
 import (
 	"github.com/go-playground/validator/v10"

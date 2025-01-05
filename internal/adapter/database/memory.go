@@ -2,11 +2,13 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"errors"
-	"net/http"
-
+	"github.com/google/uuid"
 	"github.com/tiagods/auth/internal/adapter/database/model"
+	"github.com/tiagods/auth/internal/domain/entity"
 	"github.com/tiagods/auth/internal/infra/httperrors"
+	"net/http"
 )
 
 type (
@@ -35,14 +37,25 @@ func NewMemoryRepository() Repository {
 	return memoryRepository{}
 }
 
-func (m memoryRepository) RegisterAccount(ctx context.Context, user model.User) error {
+func (m memoryRepository) BeginTransaction() (*sql.Tx, error) {
+	return nil, nil
+}
+
+func (m memoryRepository) RegisterAccount(ctx context.Context, user entity.User) error {
 	for _, value := range users {
 		if value.Username == user.Username {
 			err := errors.New("user already registered")
 			return httperrors.NewHttpError(http.StatusConflict, err.Error(), err)
 		}
 	}
-	users = append(users, user)
+
+	resultUser := model.User{
+		ID:       uuid.NewString(),
+		Username: user.Username,
+		Password: "password",
+	}
+
+	users = append(users, resultUser)
 	return nil
 }
 
