@@ -1,64 +1,62 @@
 package handler
 
 import (
+	"fmt"
+	"github.com/tiagods/auth/internal/adapter/web/extractor"
+	"github.com/tiagods/auth/internal/infra/httperrors"
+	"github.com/tiagods/auth/internal/infra/logger"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
 	"github.com/tiagods/auth/internal/adapter/web/presenter/request"
 	"github.com/tiagods/auth/internal/domain/service"
-	"github.com/tiagods/auth/internal/infra/utils"
 )
 
 type (
-	TokenHander struct {
+	TokenHandler struct {
 		service service.TokenService
 	}
 )
 
-func NewTokenHandler(service service.TokenService) *TokenHander {
-	return &TokenHander{service: service}
+func NewTokenHandler(service service.TokenService) *TokenHandler {
+	return &TokenHandler{service: service}
 }
 
-func (h TokenHander) Register(c echo.Context) error {
+func (h *TokenHandler) Register(c echo.Context) error {
 	return nil
 }
 
-func (h TokenHander) Login(c echo.Context) error {
+func (h *TokenHandler) Login(c echo.Context) error {
+	ctx := c.Request().Context()
 	login := &request.Login{}
 
-	if err := extractPresenter(c, login); err != nil {
+	if err := extractor.ExtractPresenter(c, login); err != nil {
 		return err
 	}
 
+	logger.Info(ctx, fmt.Sprintf("Request POST at %s", c.Path()))
+
 	result, err := h.service.Login(c.Request().Context(), login)
 	if err != nil {
-		return utils.JSON(c, 0, err)
+		return httperrors.JSON(c, 0, err)
 	}
 
 	return c.JSON(http.StatusCreated, result)
 }
 
-func extractPresenter(c echo.Context, i interface{}) error {
-	if err := c.Bind(i); err != nil {
-		c.Logger().Error(err)
-		return utils.JSON(c, http.StatusBadRequest, err)
-	}
-	if err := c.Validate(i); err != nil {
-		c.Logger().Error(err)
-		return utils.JSON(c, http.StatusBadRequest, err)
-	}
-	return nil
-}
+func (h *TokenHandler) RefreshToken(c echo.Context) error {
+	ctx := c.Request().Context()
 
-func (h TokenHander) RefreshToken(c echo.Context) error {
 	tokenReq := &request.RefreshToken{}
-	if err := extractPresenter(c, tokenReq); err != nil {
+	if err := extractor.ExtractPresenter(c, tokenReq); err != nil {
 		return err
 	}
 
+	logger.Info(ctx, fmt.Sprintf("Request POST at %s", c.Path()))
+
 	result, err := h.service.RefreshToken(c.Request().Context(), tokenReq)
 	if err != nil {
-		return utils.JSON(c, 0, err)
+		return httperrors.JSON(c, 0, err)
 	}
 	return c.JSON(http.StatusCreated, result)
 }

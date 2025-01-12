@@ -1,0 +1,20 @@
+services:
+  flyway:
+    image: flyway/flyway
+    command: -url=jdbc:mysql://mysql -schemas=auth -user=root -password=auth -connectRetries=60 migrate
+    volumes:
+      - .:/flyway/sql
+    depends_on:
+      - mysql
+  mysql:
+    image: mysql:9.1.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=auth
+      - MYSQL_DATABASE=auth
+    ports:
+      - "3306:3306"
+
+  redis:
+    image: redis:7.4.2
+    ports:
+      - "6379:6379"

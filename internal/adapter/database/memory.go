@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/google/uuid"
 	"github.com/tiagods/auth/internal/adapter/database/model"
 	"github.com/tiagods/auth/internal/domain/entity"
 	"github.com/tiagods/auth/internal/infra/httperrors"
+	"github.com/tiagods/auth/internal/infra/message"
 	"net/http"
+	"time"
 )
 
 type (
@@ -16,20 +17,20 @@ type (
 )
 
 var users []model.User
-var tokens []model.RefreshToken
+var tokens map[int64]model.RefreshToken
 
 func NewMemoryRepository() Repository {
 	var users []model.User
-	tokens = make([]model.RefreshToken, 0)
+	tokens = make(map[int64]model.RefreshToken)
 
 	users = append(users, model.User{
-		ID:       "jon",
+		ID:       1,
 		Username: "jon",
 		Password: "password",
 	})
 
 	users = append(users, model.User{
-		ID:       "tiago",
+		ID:       2,
 		Username: "tiago",
 		Password: "password",
 	})
@@ -37,20 +38,45 @@ func NewMemoryRepository() Repository {
 	return memoryRepository{}
 }
 
+func (m memoryRepository) Ping() error {
+	return nil
+}
+
 func (m memoryRepository) BeginTransaction() (*sql.Tx, error) {
 	return nil, nil
 }
 
-func (m memoryRepository) RegisterAccount(ctx context.Context, user entity.User) error {
-	for _, value := range users {
-		if value.Username == user.Username {
-			err := errors.New("user already registered")
-			return httperrors.NewHttpError(http.StatusConflict, err.Error(), err)
+func (m memoryRepository) GetRefreshToken(ctx context.Context, userID int64, refreshToken *string) (*entity.RefreshToken, error) {
+	for _, tk := range tokens {
+		if userID != 0 && refreshToken != nil {
+			if tk.UserID == userID && tk.ID == *refreshToken {
+				return tk.ToEntity(), nil
+			}
+		} else {
+			if userID != 0 && tk.UserID == userID {
+				return tk.ToEntity(), nil
+			}
+			if refreshToken != nil && tk.ID == *refreshToken {
+				return tk.ToEntity(), nil
+			}
 		}
 	}
 
+	return nil, nil
+}
+
+func (m memoryRepository) RegisterAccount(ctx context.Context, tx *sql.Tx, user entity.User) error {
+	for _, value := range users {
+		if value.Username == user.Username {
+			msg := message.ErrDuplicateUser
+			err := errors.New(msg.UserMessage)
+			return httperrors.NewHttpError(ctx, http.StatusConflict, msg, err)
+		}
+	}
+
+	id := len(users) + 1
 	resultUser := model.User{
-		ID:       uuid.NewString(),
+		ID:       int64(id),
 		Username: user.Username,
 		Password: "password",
 	}
@@ -59,42 +85,24 @@ func (m memoryRepository) RegisterAccount(ctx context.Context, user entity.User)
 	return nil
 }
 
-func (m memoryRepository) FindByUserAndPassword(ctx context.Context, username string, password string) (model.User, error) {
+func (m memoryRepository) FindByUserAndPassword(ctx context.Context, username string, password string) (*entity.User, error) {
 	for _, usr := range users {
 		if usr.Username == username &&
 			usr.Password == password {
-			return usr, nil
+			return usr.ToEntity(), nil
 		}
 	}
-	err := errors.New("user not found")
-	return model.User{}, httperrors.NewHttpError(http.StatusUnauthorized, err.Error(), err)
+	msg := message.ErrUserNotFound
+	return nil, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
 }
 
-func (m memoryRepository) UpdateRefreshToken(ctx context.Context, userId string, newToken string) error {
-	found := false
-	for i, tk := range tokens {
-		if tk.ID == userId {
-			tokens[i].RefreshToken = newToken
-			found = true
-			break
-		}
-	}
-	if !found {
-		tokens = append(tokens, model.RefreshToken{ID: userId, RefreshToken: newToken})
+func (m memoryRepository) UpdateRefreshToken(ctx context.Context, tx *sql.Tx, userId int64, newToken string, expiresAt time.Time) error {
+	if tk, ok := tokens[userId]; ok {
+		tk.ID = newToken
+		tk.ExpiresAt = expiresAt
+		tokens[userId] = tk
+	} else {
+		tokens[userId] = model.RefreshToken{UserID: userId, ID: newToken, ExpiresAt: expiresAt, CreatedAt: time.Now().UTC()}
 	}
 	return nil
-}
-
-func (m memoryRepository) FindRefreshToken(ctx context.Context, refreshToken string) (model.User, error) {
-	for _, tk := range tokens {
-		if tk.RefreshToken == refreshToken {
-			for _, us := range users {
-				if us.ID == tk.ID {
-					return us, nil
-				}
-			}
-		}
-	}
-	err := errors.New("not authorized refresh token")
-	return model.User{}, httperrors.NewHttpError(http.StatusUnauthorized, err.Error(), err)
 }

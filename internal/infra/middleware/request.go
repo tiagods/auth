@@ -10,7 +10,7 @@ import (
 	"net/http"
 )
 
-func ServerHeader(next echo.HandlerFunc) echo.HandlerFunc {
+func RequestContext(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		cid := c.Request().Header.Get(requestcontext.CID)
 		if cid == "" {
@@ -25,7 +25,7 @@ func ServerHeader(next echo.HandlerFunc) echo.HandlerFunc {
 			Tenant: tenant,
 			Roles:  nil,
 		})
-		c.Request().WithContext(ctx)
+		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)
 	}
 }

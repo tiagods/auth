@@ -1,20 +1,14 @@
-package database
+package repository
 
 import (
 	"context"
 	"database/sql"
 	"github.com/tiagods/auth/internal/domain/entity"
-	"github.com/tiagods/auth/internal/infra/database"
 	"time"
 )
 
 type (
-	repository struct {
-		reader *database.DbAdapter
-		writer *database.DbAdapter
-	}
-
-	Repository interface {
+	UserRepository interface {
 		Ping() error
 		BeginTransaction() (*sql.Tx, error)
 		RegisterAccount(ctx context.Context, tx *sql.Tx, user entity.User) error
@@ -23,19 +17,3 @@ type (
 		FindByUserAndPassword(ctx context.Context, username string, password string) (*entity.User, error)
 	}
 )
-
-func NewRepository(reader *database.DbAdapter, writer *database.DbAdapter) Repository {
-	return &repository{reader: reader, writer: writer}
-}
-
-func (r *repository) BeginTransaction() (*sql.Tx, error) {
-	return r.writer.Begin()
-}
-
-func (r *repository) Ping() error {
-	err := r.reader.Ping()
-	if err != nil {
-		return err
-	}
-	return r.writer.Ping()
-}

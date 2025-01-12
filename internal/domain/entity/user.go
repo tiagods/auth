@@ -1,26 +1,29 @@
 package entity
 
+import "fmt"
+
 type (
 	User struct {
-		ID       string
+		ID       int64
 		Username string
+		Password string
 	}
 
 	Token struct {
-		UserID string
+		UserID int64
 		Token  string
 	}
 
 	RefreshToken struct {
-		RefreshToken string
-		UserID       string
+		ID     string
+		UserID int64
 	}
 )
 
 func (r RefreshToken) GetKey() string {
-	return "refreshtoken::id" + r.UserID
+	return fmt.Sprintf("refreshtoken::id::%d", r.UserID)
 }
 
 func (r Token) GetKey() string {
-	return "token::id::" + r.UserID
+	return fmt.Sprintf("token::id::%s", r.UserID)
 }

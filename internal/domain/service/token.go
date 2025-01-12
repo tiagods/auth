@@ -12,6 +12,7 @@ import (
 	"github.com/tiagods/auth/internal/domain/entity"
 	"github.com/tiagods/auth/internal/infra/cache"
 	"github.com/tiagods/auth/internal/infra/httperrors"
+	"github.com/tiagods/auth/internal/infra/message"
 
 	"net/http"
 	"time"
@@ -29,22 +30,10 @@ type (
 	}
 )
 
-var errLoginRequired = errors.New("login required")
-
 func NewTokenService(repo database.Repository, cache cache.Repository) TokenService {
 	return &tokenService{
 		repo, cache,
 	}
-}
-
-func (t *tokenService) WithRepository(repo database.Repository) *tokenService {
-	t.repo = repo
-	return t
-}
-
-func (t *tokenService) WithCache(cache cache.Repository) *tokenService {
-	t.cache = cache
-	return t
 }
 
 func (t *tokenService) Login(ctx context.Context, login *request.Login) (response.Token, error) {
@@ -53,6 +42,7 @@ func (t *tokenService) Login(ctx context.Context, login *request.Login) (respons
 		return response.Token{}, err
 	}
 	user := &entity.User{ID: result.ID, Username: result.Username}
+
 	token, err := t.generateTokenPair(ctx, user, false)
 	if err != nil {
 		return response.Token{}, err
@@ -64,30 +54,30 @@ func (t *tokenService) RefreshToken(ctx context.Context, tokenReq *request.Refre
 	token, err := jwt.Parse(tokenReq.RefreshToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			err := fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			log.Error(err)
-			return nil, httperrors.NewHttpError(http.StatusUnauthorized, err.Error(), err)
+			msg := message.ErrLoginRequired
+			return nil, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, err)
 		}
 		return []byte("secret"), nil
 	})
 
 	if token == nil {
-		err = errors.New("invalid refresh RefreshToken")
-		log.Error(err)
-		return response.Token{}, httperrors.NewHttpError(http.StatusUnauthorized, err.Error(), err)
+		msg := message.ErrInvalidToken
+		return response.Token{}, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		if _, ok := claims["sub"].(float64); ok {
 			if int(claims["sub"].(float64)) == 1 {
 				refreshTokenString := token.Raw
-				token, err := t.updateToken(ctx, entity.RefreshToken{RefreshToken: refreshTokenString})
+				token, err := t.updateToken(ctx, entity.RefreshToken{ID: refreshTokenString})
 				if err != nil {
 					return response.Token{}, err
 				}
 				return token, nil
 			}
 		}
-		return response.Token{}, httperrors.NewHttpError(http.StatusUnauthorized, errLoginRequired.Error(), errLoginRequired)
+		msg := message.ErrLoginRequired
+		return response.Token{}, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
 	}
 	return response.Token{}, err
 }
@@ -102,19 +92,20 @@ func (t *tokenService) updateToken(ctx context.Context, refreshToken entity.Refr
 }
 
 func (t *tokenService) getTokenByRefresh(ctx context.Context, refreshToken entity.RefreshToken) (*entity.User, error) {
-	rs, err := t.repo.FindRefreshToken(ctx, refreshToken.RefreshToken)
+	rs, err := t.repo.GetRefreshToken(ctx, refreshToken.UserID, &refreshToken.ID)
 	if err != nil {
 		return nil, err
 	}
-	usr := &entity.User{ID: rs.ID, Username: rs.Username}
+	usr := &entity.User{ID: rs.UserID}
 
 	refreshToken.UserID = usr.ID
 
 	notfound := cache.ErrNotFound
-	err = t.cache.Get(ctx, refreshToken.RefreshToken, &entity.User{})
+	err = t.cache.Get(ctx, refreshToken.ID, &entity.User{})
 	if err != nil {
 		if errors.Is(err, notfound) {
-			return nil, httperrors.NewHttpError(http.StatusUnauthorized, errLoginRequired.Error(), errLoginRequired)
+			msg := message.ErrLoginRequired
+			return nil, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
 		}
 		return nil, err
 	}
@@ -122,15 +113,15 @@ func (t *tokenService) getTokenByRefresh(ctx context.Context, refreshToken entit
 }
 
 func (t *tokenService) generateTokenPair(ctx context.Context, user *entity.User, updateToken bool) (response.Token, error) {
-	sr := entity.Token{UserID: user.ID}
+	tk := entity.Token{UserID: user.ID}
 	isGenerateToken := updateToken
 
 	result := &entity.Token{}
-	err := t.cache.Get(ctx, sr.GetKey(), result)
+	err := t.cache.Get(ctx, tk.GetKey(), result)
 	if errors.Is(err, cache.ErrNotFound) {
 		isGenerateToken = true
 	} else {
-		sr.Token = result.Token
+		tk.Token = result.Token
 	}
 
 	if isGenerateToken {
@@ -147,9 +138,9 @@ func (t *tokenService) generateTokenPair(ctx context.Context, user *entity.User,
 			return response.Token{}, err
 		}
 
-		sr.Token = signature
+		tk.Token = signature
 
-		err = t.cache.Set(ctx, sr.GetKey(), sr, time.Second*30)
+		err = t.cache.Set(ctx, tk.GetKey(), tk, time.Second*30)
 		if err != nil {
 			return response.Token{}, err
 		}
@@ -160,37 +151,61 @@ func (t *tokenService) generateTokenPair(ctx context.Context, user *entity.User,
 	rsRefresh := &entity.RefreshToken{}
 	err = t.cache.Get(ctx, refresh.GetKey(), rsRefresh)
 	if errors.Is(err, cache.ErrNotFound) {
-		isGenerateRefreshToken = true
+		rk, err := t.repo.GetRefreshToken(ctx, user.ID, nil)
+		if err != nil {
+			return response.Token{}, err
+		}
+		if rk.ID == "" {
+			isGenerateRefreshToken = true
+		} else {
+			refresh.ID = rk.ID
+			err = t.cache.Set(ctx, refresh.GetKey(), refresh, time.Hour*2)
+			if err != nil {
+				return response.Token{}, err
+			}
+		}
 	} else {
-		refresh.RefreshToken = rsRefresh.RefreshToken
+		refresh.ID = rsRefresh.ID
 	}
 
 	if isGenerateRefreshToken {
 		refreshToken := jwt.New(jwt.SigningMethodHS256)
 		rtClaims := refreshToken.Claims.(jwt.MapClaims)
 		rtClaims["sub"] = 1
-		exp := time.Now().Add(time.Hour * 24)
+		exp := time.Now().Add(time.Hour * 2)
 		rtClaims["exp"] = exp
 
 		signature, err := refreshToken.SignedString([]byte("secret"))
 		if err != nil {
 			return response.Token{}, err
 		}
-		refresh.RefreshToken = signature
+		refresh.ID = signature
 
-		err = t.cache.Set(ctx, refresh.GetKey(), sr, time.Hour*24)
+		err = t.cache.Set(ctx, refresh.GetKey(), tk, time.Hour*2)
 		if err != nil {
 			return response.Token{}, err
 		}
 
-		err = t.repo.UpdateRefreshToken(ctx, refresh.UserID, refresh.RefreshToken)
+		tx, err := t.repo.BeginTransaction()
+		if err != nil {
+			return response.Token{}, err
+		}
+		err = t.repo.UpdateRefreshToken(ctx, tx, refresh.UserID, refresh.ID, exp)
+		if err != nil {
+			errRollback := tx.Rollback()
+			if errRollback != nil {
+				log.Error(errRollback)
+			}
+			return response.Token{}, err
+		}
+		err = tx.Commit()
 		if err != nil {
 			return response.Token{}, err
 		}
 	}
 
 	return response.Token{
-		AccessToken:  sr.Token,
-		RefreshToken: refresh.RefreshToken,
+		AccessToken:  tk.Token,
+		RefreshToken: refresh.ID,
 	}, nil
 }
