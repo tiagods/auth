@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/tiagods/auth/internal/infra/httperrors"
+	"github.com/tiagods/auth/internal/infra/logger"
 	"github.com/tiagods/auth/internal/infra/requestcontext"
 	"net/http"
 )
@@ -43,16 +44,16 @@ func HTTPErrorHandler(err error, c echo.Context) {
 		resultCode = he.Code
 	}
 	var httpError *httperrors.HttpError
-	if ok := errors.As(err, httpError); ok {
+	if ok := errors.As(err, &httpError); ok {
 		message = httpError.Error()
 		resultCode = httpError.StatusCode
 		resultErr = httpError.InternalError
 	}
 
 	if resultCode >= http.StatusInternalServerError {
-		c.Logger().Error(resultErr)
+		logger.Error(c.Request().Context(), err, err.Error())
 	} else {
-		c.Logger().Warn(resultErr)
+		logger.Warn(c.Request().Context(), err, err.Error())
 	}
 
 	hte := echo.HTTPError{Code: resultCode, Message: message, Internal: resultErr}

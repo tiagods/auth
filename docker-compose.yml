@@ -1,20 +1,67 @@
 services:
   flyway:
+    container_name: auth-flyway
     image: flyway/flyway
     command: -url=jdbc:mysql://mysql -schemas=auth -user=root -password=auth -connectRetries=60 migrate
     volumes:
       - .:/flyway/sql
     depends_on:
       - mysql
+    networks:
+      - auth_network
   mysql:
+    container_name: auth-mysql
     image: mysql:9.1.0
     environment:
       - MYSQL_ROOT_PASSWORD=auth
       - MYSQL_DATABASE=auth
     ports:
       - "3306:3306"
+    networks:
+      - auth_network
 
   redis:
+    container_name: auth-redis
     image: redis:7.4.2
     ports:
       - "6379:6379"
+    networks:
+      - auth_network
+#  jaeger:
+#    image: jaegertracing/jaeger:2.2.0
+#    ports:
+#      - "16686:16686"
+#      - "4317:4317"
+#      - "4318:4318"
+#      - "5778:5778"
+#      - "9411:9411"
+
+  collector:
+    container_name: auth-collector
+    image: otel/opentelemetry-collector:0.107.0
+    volumes:
+      - ./otelcol.yaml:/etc/otelcol/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      jaeger:
+        condition: service_healthy
+    networks:
+      - auth_network
+
+  jaeger:
+    container_name: auth-jaeger
+    image: jaegertracing/all-in-one:latest
+    environment:
+      JAEGER_PROPAGATION: w3c
+    ports:
+      - "16686:16686"
+    healthcheck:
+      test: [ CMD, wget, -q, -S, -O, "-", "localhost:14269" ]
+    networks:
+      - auth_network
+
+networks:
+  auth_network:
+    driver: bridge

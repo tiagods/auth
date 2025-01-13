@@ -7,10 +7,10 @@ import (
 
 type (
 	RefreshToken struct {
-		ID        string
-		UserID    int64
-		CreatedAt time.Time
-		ExpiresAt time.Time
+		ID        string    `db:"id"`
+		UserID    int64     `db:"user_id"`
+		CreatedAt time.Time `db:"created_at"`
+		ExpiresAt time.Time `db:"expires_at"`
 	}
 )
 

@@ -2,8 +2,10 @@ package logger
 
 import (
 	"context"
+	"github.com/tiagods/auth/internal/infra/env"
 	"github.com/tiagods/auth/internal/infra/utils"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -17,7 +19,10 @@ type (
 )
 
 func Init() *zap.Logger {
-	zap.ReplaceGlobals(zap.Must(zap.NewProductionConfig().Level.SetLevel(zap.DebugLevel)))
+	config := zap.NewProductionConfig()
+	level, _ := zapcore.ParseLevel(env.GetEnvAsString(env.LOG_LEVEL, env.DEFAULT_LOG))
+	config.Level.SetLevel(level)
+	zap.ReplaceGlobals(zap.Must(config.Build()))
 	zap.L().Info("logger construction succeeded")
 	return zap.L()
 }
@@ -48,8 +53,10 @@ func Fatal(ctx context.Context, err error, message string, fields ...Fields) {
 
 func mapToFields(ctx context.Context, err error, fields []Fields) []zap.Field {
 	var result []zap.Field
-	for _, v := range fields {
-		result = append(result, zap.Any(v.key, v.value))
+	if len(fields) > 0 {
+		for _, v := range fields {
+			result = append(result, zap.Any(v.key, v.value))
+		}
 	}
 
 	result = append(result, zap.String("cid", utils.GetCidFromContext(ctx)))

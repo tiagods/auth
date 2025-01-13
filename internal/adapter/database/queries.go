@@ -3,22 +3,22 @@ package database
 const (
 	// Table Users
 	InsertUser                    = `INSERT INTO Users (Username, Password) VALUES (?,?)`
-	FindUserByUserNameAndPassword = `SELECT ID, Username, Password FROM Users WHERE username=? AND password=?`
-
+	FindUserByUserNameAndPassword = `SELECT u.ID as id, u.Username as username, u.Password as password FROM Users u WHERE u.Username=? AND u.Password=?`
+	ListUsers                     = `SELECT u.ID as id, u.Username as username, u.Password as password FROM Users u LIMIT ? OFFSET ?`
 	// Table RefreshTokens
 	FindRefreshToken = `
-		SELECT ID, User_ID, CreatedAt, ExpiresAt
-		FROM RefreshTokens
+		SELECT r.ID as id, r.User_ID as user_id, r.CreatedAt as created_at, r.ExpiresAt as expires_at
+		FROM RefreshTokens r
 		WHERE ExpiresAt < ?
 	`
-	FindRefreshTokenAddUserID = `AND User_ID = ?`
+	FindRefreshTokenAddUserID = `AND r.User_ID = ?`
 
-	FindRefreshTokenAddID = `AND ID = ?`
+	FindRefreshTokenAddID = `AND r.ID = ?`
 
 	FindRefreshTokenByUser = `
-		SELECT ID, User_ID, CreatedAt, ExpiresAt
-		FROM RefreshTokens
-		WHERE User_ID = ?
+		SELECT r.ID as id, r.User_ID as user_id, r.CreatedAt as created_at, r.ExpiresAt as expires_at
+		FROM RefreshTokens r
+		WHERE r.User_ID = ?
 	`
 
 	DeleteRefreshToken = `DELETE FROM RefreshTokens WHERE ID = ?`

@@ -5,7 +5,7 @@ import "github.com/tiagods/auth/internal/domain/entity"
 type (
 	User struct {
 		ID       int64  `db:"id"`
-		Username string `db:"Username"`
+		Username string `db:"username"`
 		Password string `db:"password"`
 	}
 )

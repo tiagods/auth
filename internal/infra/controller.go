@@ -13,6 +13,7 @@ import (
 	"github.com/tiagods/auth/internal/infra/env"
 	"github.com/tiagods/auth/internal/infra/logger"
 	localMiddleware "github.com/tiagods/auth/internal/infra/middleware"
+	"github.com/tiagods/auth/internal/infra/otel"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,6 +25,12 @@ func StartApi() {
 
 	log := logger.Init()
 	defer log.Sync()
+
+	otelShutdown, err := otel.SetupOTelSDK(ctx)
+	if err != nil {
+		logger.Fatal(ctx, err, "failed to initialize opentelemetry")
+	}
+	defer otelShutdown(ctx)
 
 	env.GetEnvAsString(env.MYSQL_USER, env.DEFAULT_MYSQL_USER)
 	env.GetEnvAsString(env.MYSQL_PASS, env.DEFAULT_MYSQL_PASS)

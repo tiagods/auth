@@ -9,6 +9,8 @@ import (
 	"github.com/labstack/gommon/log"
 	"github.com/nofeaturesonlybugs/set"
 	"github.com/nofeaturesonlybugs/sqlh"
+	"github.com/tiagods/auth/internal/infra/logger"
+	"github.com/tiagods/auth/internal/infra/otel"
 	"strings"
 	"time"
 )
@@ -17,6 +19,16 @@ type (
 	DbAdapter struct {
 		*sql.DB
 		connectionString string
+	}
+
+	ResultRows struct {
+		rows  *sql.Rows
+		close func()
+		err   error
+	}
+	ResultRow struct {
+		row *sql.Row
+		err error
 	}
 )
 
@@ -58,6 +70,10 @@ func (m *DbAdapter) Check() {
 }
 
 func (m *DbAdapter) Exec(ctx context.Context, returnID bool, tx *sql.Tx, query string, args ...interface{}) (int64, error) {
+	caller := "database::exec"
+	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	defer span.End()
+
 	m.Check()
 	var result sql.Result
 	var err error
@@ -67,14 +83,17 @@ func (m *DbAdapter) Exec(ctx context.Context, returnID bool, tx *sql.Tx, query s
 		result, err = m.DB.ExecContext(ctx, query, args...)
 	}
 	if err != nil {
+		otel.SetError(span, err)
 		return 0, err
 	}
 	if returnID {
 		id, err := result.LastInsertId()
 		if err != nil {
+			otel.SetError(span, err)
 			return id, err
 		}
 		if strings.Contains(query, "INSERT") && id == 0 {
+			otel.SetError(span, ErrNoRowsAffected)
 			return id, ErrNoRowsAffected
 		}
 	}
@@ -83,38 +102,78 @@ func (m *DbAdapter) Exec(ctx context.Context, returnID bool, tx *sql.Tx, query s
 		return 0, err
 	}
 	if affected == 0 {
+		otel.SetError(span, ErrNoRowsAffected)
 		return 0, ErrNoRowsAffected
 	}
 	return 0, nil
 }
 
-func (m *DbAdapter) QueryRows(ctx context.Context, query string, slice []interface{}, scanner *sqlh.Scanner, args ...interface{}) error {
+func (m *DbAdapter) QueryRows(ctx context.Context, query string, args ...interface{}) ResultRows {
+	caller := "database::query_rows"
+	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	defer span.End()
+
 	m.Check()
-	if scanner == nil {
-		scanner = &sqlh.Scanner{
-			Mapper: &set.Mapper{
-				Tags: []string{"DB", "json"},
-			},
+	rows, err := m.QueryContext(ctx, query, args...)
+	if err != nil {
+		otel.SetError(span, err)
+		return ResultRows{rows: rows, err: err}
+	}
+	if rows.Err() != nil {
+		otel.SetError(span, rows.Err())
+		return ResultRows{rows: rows, err: rows.Err()}
+	}
+	closeRows := func() {
+		err := rows.Close()
+		if err != nil {
+			logger.Error(ctx, err, err.Error())
 		}
 	}
-	err := scanner.Select(m.DB, &slice, query, args...)
+	return ResultRows{close: closeRows, rows: rows, err: nil}
+}
+
+func (r ResultRows) Result() (rows *sql.Rows, shutdown func(), err error) {
+	rows = r.rows
+	shutdown = r.close
+	err = r.err
+	return rows, shutdown, err
+}
+
+func (r ResultRows) Close() {
+	if r.close != nil && r.rows != nil && r.err == nil {
+		r.close()
+	}
+}
+
+func (m *DbAdapter) QueryRow(ctx context.Context, query string, args ...interface{}) ResultRow {
+	caller := "database::query_row"
+	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	defer span.End()
+
+	m.Check()
+	row := m.QueryRowContext(ctx, query, args)
+	return ResultRow{row: row, err: row.Err()}
+}
+
+func (r ResultRow) Scan(dest ...any) (err error) {
+	err = r.err
 	if err != nil {
 		return err
 	}
-	return nil
+	err = r.row.Scan(dest...)
+	return err
 }
 
-func (m *DbAdapter) QueryRow(ctx context.Context, query string, dest interface{}, args ...interface{}) error {
+func (m *DbAdapter) GetSqlScanner(ctx context.Context) *sqlh.Scanner {
+	caller := "database::get_sql_scanner"
+	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	defer span.End()
+
 	m.Check()
 	scn := &sqlh.Scanner{
 		Mapper: &set.Mapper{
-			Tags: []string{"DB", "json"},
+			Tags: []string{"db", "json"},
 		},
 	}
-
-	err := scn.Select(m.DB, dest, query, args...)
-	if err != nil {
-		return err
-	}
-	return nil
+	return scn
 }
