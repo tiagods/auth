@@ -1,15 +1,16 @@
-package otel
+package tracer
 
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/tiagods/auth/internal/infra/env"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
-	"time"
 )
 
 // SetupOTelSDK bootstraps the OpenTelemetry pipeline.
@@ -40,8 +41,6 @@ func SetupOTelSDK(ctx context.Context) (shutdown func(context.Context) error, er
 	}
 	shutdownFuncs = append(shutdownFuncs, tracerProvider.Shutdown)
 	otel.SetTracerProvider(tracerProvider)
-
-	tracer = tracerProvider.Tracer(env.GetEnvAsString(env.SERVICE_NAME, env.DEFAULT_SERVICE_NAME))
 	return
 }
 

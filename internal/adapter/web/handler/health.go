@@ -1,11 +1,12 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/tiagods/auth/internal/adapter/web/presenter/response"
 	"github.com/tiagods/auth/internal/domain/service"
-	"github.com/tiagods/auth/internal/infra/otel"
+	"github.com/tiagods/auth/internal/infra/tracer"
 	"go.opentelemetry.io/otel/codes"
-	"net/http"
 
 	"github.com/labstack/echo/v4"
 )
@@ -19,7 +20,7 @@ func NewHealthHandler(health service.Health) HealthHandler {
 }
 
 func (h *HealthHandler) Health(c echo.Context) error {
-	ctx, span := otel.Start(c.Request().Context(), "handler::health", otel.SpanKindRequest)
+	ctx, span := tracer.Start(c.Request().Context(), "handler::health", tracer.SpanKindRequest)
 	defer span.End()
 
 	result := h.health.Check(ctx)

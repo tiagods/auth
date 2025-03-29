@@ -2,12 +2,13 @@ package service
 
 import (
 	"context"
+
 	"github.com/labstack/gommon/log"
 	"github.com/tiagods/auth/internal/adapter/database"
 	"github.com/tiagods/auth/internal/domain/entity"
 	"github.com/tiagods/auth/internal/infra/cache"
-	"github.com/tiagods/auth/internal/infra/otel"
 	"github.com/tiagods/auth/internal/infra/requestcontext"
+	"github.com/tiagods/auth/internal/infra/tracer"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -31,8 +32,8 @@ func NewHealthService(repo database.Repository, cache cache.Repository) Health {
 }
 
 func (h Health) Check(ctx context.Context) entity.Health {
-	caller := "service::health"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	caller := "service::health::check"
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
 
 	health := entity.NewHealth()

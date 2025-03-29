@@ -3,6 +3,11 @@ package infra
 import (
 	"context"
 	"errors"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/tiagods/auth/internal/adapter/database"
@@ -13,10 +18,7 @@ import (
 	"github.com/tiagods/auth/internal/infra/env"
 	"github.com/tiagods/auth/internal/infra/logger"
 	localMiddleware "github.com/tiagods/auth/internal/infra/middleware"
-	"github.com/tiagods/auth/internal/infra/otel"
-	"net/http"
-	"os"
-	"os/signal"
+	"github.com/tiagods/auth/internal/infra/tracer"
 )
 
 func StartApi() {
@@ -26,7 +28,7 @@ func StartApi() {
 	log := logger.Init()
 	defer log.Sync()
 
-	otelShutdown, err := otel.SetupOTelSDK(ctx)
+	otelShutdown, err := tracer.SetupOTelSDK(ctx)
 	if err != nil {
 		logger.Fatal(ctx, err, "failed to initialize opentelemetry")
 	}
@@ -76,14 +78,29 @@ func StartApi() {
 	e.GET("/admin", localMiddleware.Private, localMiddleware.IsLoggedIn, localMiddleware.IsAdmin)
 	e.POST("/refresh-token", tokenHandler.RefreshToken)
 
+	// Modificação do servidor para incluir timeout de shutdown
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: e,
+	}
+
 	go func() {
-		if err := e.Start(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Fatal(ctx, err, "shutting down the server")
 		}
 	}()
 
+	// Aguarda sinal de interrupção
 	<-ctx.Done()
-	if err := e.Shutdown(ctx); err != nil {
-		logger.Fatal(ctx, err, "shutting down the server")
+
+	// Cria um novo contexto com timeout para shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	// Tenta realizar shutdown gracefully
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Fatal(ctx, err, "erro durante o shutdown do servidor")
 	}
+
+	logger.Info(ctx, "servidor encerrado com sucesso")
 }

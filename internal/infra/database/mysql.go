@@ -5,14 +5,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/labstack/gommon/log"
 	"github.com/nofeaturesonlybugs/set"
 	"github.com/nofeaturesonlybugs/sqlh"
 	"github.com/tiagods/auth/internal/infra/logger"
-	"github.com/tiagods/auth/internal/infra/otel"
-	"strings"
-	"time"
+	"github.com/tiagods/auth/internal/infra/tracer"
 )
 
 type (
@@ -71,7 +72,7 @@ func (m *DbAdapter) Check() {
 
 func (m *DbAdapter) Exec(ctx context.Context, returnID bool, tx *sql.Tx, query string, args ...interface{}) (int64, error) {
 	caller := "database::exec"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindDB)
 	defer span.End()
 
 	m.Check()
@@ -83,17 +84,17 @@ func (m *DbAdapter) Exec(ctx context.Context, returnID bool, tx *sql.Tx, query s
 		result, err = m.DB.ExecContext(ctx, query, args...)
 	}
 	if err != nil {
-		otel.SetError(span, err)
+		tracer.SetError(span, err)
 		return 0, err
 	}
 	if returnID {
 		id, err := result.LastInsertId()
 		if err != nil {
-			otel.SetError(span, err)
+			tracer.SetError(span, err)
 			return id, err
 		}
 		if strings.Contains(query, "INSERT") && id == 0 {
-			otel.SetError(span, ErrNoRowsAffected)
+			tracer.SetError(span, ErrNoRowsAffected)
 			return id, ErrNoRowsAffected
 		}
 	}
@@ -102,7 +103,7 @@ func (m *DbAdapter) Exec(ctx context.Context, returnID bool, tx *sql.Tx, query s
 		return 0, err
 	}
 	if affected == 0 {
-		otel.SetError(span, ErrNoRowsAffected)
+		tracer.SetError(span, ErrNoRowsAffected)
 		return 0, ErrNoRowsAffected
 	}
 	return 0, nil
@@ -110,17 +111,17 @@ func (m *DbAdapter) Exec(ctx context.Context, returnID bool, tx *sql.Tx, query s
 
 func (m *DbAdapter) QueryRows(ctx context.Context, query string, args ...interface{}) ResultRows {
 	caller := "database::query_rows"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindDB)
 	defer span.End()
 
 	m.Check()
 	rows, err := m.QueryContext(ctx, query, args...)
 	if err != nil {
-		otel.SetError(span, err)
+		tracer.SetError(span, err)
 		return ResultRows{rows: rows, err: err}
 	}
 	if rows.Err() != nil {
-		otel.SetError(span, rows.Err())
+		tracer.SetError(span, rows.Err())
 		return ResultRows{rows: rows, err: rows.Err()}
 	}
 	closeRows := func() {
@@ -147,7 +148,7 @@ func (r ResultRows) Close() {
 
 func (m *DbAdapter) QueryRow(ctx context.Context, query string, args ...interface{}) ResultRow {
 	caller := "database::query_row"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindDB)
 	defer span.End()
 
 	m.Check()
@@ -166,7 +167,7 @@ func (r ResultRow) Scan(dest ...any) (err error) {
 
 func (m *DbAdapter) GetSqlScanner(ctx context.Context) *sqlh.Scanner {
 	caller := "database::get_sql_scanner"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	_, span := tracer.Start(ctx, caller, tracer.SpanKindDB)
 	defer span.End()
 
 	m.Check()

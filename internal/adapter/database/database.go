@@ -3,10 +3,11 @@ package database
 import (
 	"context"
 	"database/sql"
-	"github.com/tiagods/auth/internal/infra/message"
-	"github.com/tiagods/auth/internal/infra/otel"
 	"net/http"
 	"time"
+
+	"github.com/tiagods/auth/internal/infra/message"
+	"github.com/tiagods/auth/internal/infra/tracer"
 
 	"github.com/tiagods/auth/internal/adapter/database/model"
 	"github.com/tiagods/auth/internal/domain/entity"
@@ -15,7 +16,7 @@ import (
 
 func (r *repository) GetRefreshToken(ctx context.Context, userID int64, refreshToken *string) (*entity.RefreshToken, error) {
 	caller := "repository::get_refresh_token"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
 
 	refresh := model.RefreshToken{}
@@ -40,7 +41,7 @@ func (r *repository) GetRefreshToken(ctx context.Context, userID int64, refreshT
 	}
 	if refresh.ID == "" {
 		msg := message.ErrLoginRequired
-		otel.SetError(span, err)
+		tracer.SetError(span, err)
 		return nil, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
 	}
 
@@ -49,20 +50,20 @@ func (r *repository) GetRefreshToken(ctx context.Context, userID int64, refreshT
 }
 func (r *repository) UpdateRefreshToken(ctx context.Context, tx *sql.Tx, userId int64, newToken string, expiresAt time.Time) error {
 	caller := "repository::update_refresh_token"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
 
 	refresh := model.RefreshToken{}
 	err := r.reader.GetSqlScanner(ctx).Select(r.reader.DB, &refresh, FindRefreshTokenByUser, userId)
 	if err != nil {
-		otel.SetError(span, err)
+		tracer.SetError(span, err)
 		return err
 	}
 
 	if refresh.ID == "" {
 		_, err = r.writer.Exec(ctx, false, tx, DeleteRefreshToken, refresh.ID)
 		if err != nil {
-			otel.SetError(span, err)
+			tracer.SetError(span, err)
 			return err
 		}
 	}
@@ -70,7 +71,7 @@ func (r *repository) UpdateRefreshToken(ctx context.Context, tx *sql.Tx, userId 
 
 	_, err = r.writer.Exec(ctx, false, tx, InsertRefreshToken, newToken, userId, now.Format(time.RFC3339), expiresAt.UTC().Format(time.RFC3339))
 	if err != nil {
-		otel.SetError(span, err)
+		tracer.SetError(span, err)
 		return err
 	}
 
@@ -79,12 +80,12 @@ func (r *repository) UpdateRefreshToken(ctx context.Context, tx *sql.Tx, userId 
 
 func (r *repository) RegisterAccount(ctx context.Context, tx *sql.Tx, user entity.User) error {
 	caller := "repository::register_account"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
 
 	id, err := r.writer.Exec(ctx, true, tx, InsertUser, user.Username, user.Password)
 	if err != nil {
-		otel.SetError(span, err)
+		tracer.SetError(span, err)
 		return err
 	}
 	user.ID = id
@@ -93,18 +94,18 @@ func (r *repository) RegisterAccount(ctx context.Context, tx *sql.Tx, user entit
 
 func (r *repository) FindByUserAndPassword(ctx context.Context, username string, password string) (*entity.User, error) {
 	caller := "repository::find_by_user_and_password"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
 
 	user := model.User{}
 	err := r.reader.GetSqlScanner(ctx).Select(r.reader.DB, &user, FindUserByUserNameAndPassword, username, password)
 	if err != nil {
-		otel.SetError(span, err)
+		tracer.SetError(span, err)
 		return nil, err
 	}
 	if user.ID == 0 {
 		msg := message.ErrUserNotFound
-		otel.SetError(span, msg.GetError())
+		tracer.SetError(span, msg.GetError())
 		return nil, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
 	}
 
@@ -113,7 +114,7 @@ func (r *repository) FindByUserAndPassword(ctx context.Context, username string,
 
 func (r *repository) ListUsers(ctx context.Context, offset int, limit int) ([]*entity.User, bool, error) {
 	caller := "repository::list_users"
-	ctx, span := otel.Start(ctx, caller, otel.SpanKingCPU)
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
 
 	if offset > 0 {

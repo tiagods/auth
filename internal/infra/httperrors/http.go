@@ -2,11 +2,15 @@ package httperrors
 
 import (
 	"errors"
-	"github.com/labstack/echo/v4"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
 )
 
 func JSON(e echo.Context, code int, err error) error {
+	if e.Response().Committed {
+		return err
+	}
 	resultCode := code
 	message := http.StatusText(http.StatusInternalServerError)
 	resultErr := err

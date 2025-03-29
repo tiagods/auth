@@ -2,10 +2,11 @@ package httperrors
 
 import (
 	"context"
-	"github.com/tiagods/auth/internal/infra/logger"
-	"github.com/tiagods/auth/internal/infra/message"
 	"net/http"
 	"strconv"
+
+	"github.com/tiagods/auth/internal/infra/logger"
+	"github.com/tiagods/auth/internal/infra/message"
 )
 
 type HttpError struct {
