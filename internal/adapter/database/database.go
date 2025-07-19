@@ -3,15 +3,15 @@ package database
 import (
 	"context"
 	"database/sql"
-	"net/http"
+	"errors"
+	"github.com/tiagods/auth/internal/infra/database"
+	"github.com/tiagods/auth/internal/infra/logger"
 	"time"
 
-	"github.com/tiagods/auth/internal/infra/message"
 	"github.com/tiagods/auth/internal/infra/tracer"
 
 	"github.com/tiagods/auth/internal/adapter/database/model"
 	"github.com/tiagods/auth/internal/domain/entity"
-	"github.com/tiagods/auth/internal/infra/httperrors"
 )
 
 func (r *repository) GetRefreshToken(ctx context.Context, userID int64, refreshToken *string) (*entity.RefreshToken, error) {
@@ -23,8 +23,8 @@ func (r *repository) GetRefreshToken(ctx context.Context, userID int64, refreshT
 
 	query := FindRefreshToken
 
-	expiresAt := time.Now().UTC()
-	vars := []any{expiresAt.Format(time.RFC3339)}
+	expiresAt := time.Now()
+	vars := []any{expiresAt}
 
 	if userID != 0 {
 		query += FindRefreshTokenAddUserID
@@ -40,14 +40,44 @@ func (r *repository) GetRefreshToken(ctx context.Context, userID int64, refreshT
 		return nil, err
 	}
 	if refresh.ID == "" {
-		msg := message.ErrLoginRequired
-		tracer.SetError(span, err)
-		return nil, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
+		return nil, ErrNotFound
 	}
 
 	return refresh.ToEntity(), nil
 
 }
+
+func (r *repository) DeleteRefreshToken(ctx context.Context, tx *sql.Tx, userId int64) error {
+	caller := "repository::delete_refresh_token"
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
+	defer span.End()
+
+	refresh := model.RefreshToken{}
+	err := r.reader.GetSqlScanner(ctx).Select(r.reader.DB, &refresh, FindRefreshTokenByUser, userId)
+	if err != nil {
+		tracer.SetError(span, err)
+		return err
+	}
+
+	if refresh.ID == "" {
+		return ErrNotFound
+	}
+
+	_, err = r.writer.Exec(ctx, false, tx, DeleteRefreshToken, refresh.ID)
+	if err != nil {
+		if errors.Is(err, database.ErrNoRowsAffected) {
+			tracer.SetError(span, err)
+			logger.Warn(ctx, err, "no rows affected when trying to delete refresh token")
+			return nil
+		}
+		tracer.SetError(span, err)
+		logger.Error(ctx, err, "failed to delete refresh token")
+		return err
+	}
+
+	return nil
+}
+
 func (r *repository) UpdateRefreshToken(ctx context.Context, tx *sql.Tx, userId int64, newToken string, expiresAt time.Time) error {
 	caller := "repository::update_refresh_token"
 	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
@@ -60,16 +90,20 @@ func (r *repository) UpdateRefreshToken(ctx context.Context, tx *sql.Tx, userId 
 		return err
 	}
 
-	if refresh.ID == "" {
-		_, err = r.writer.Exec(ctx, false, tx, DeleteRefreshToken, refresh.ID)
-		if err != nil {
+	_, err = r.writer.Exec(ctx, false, tx, DeleteRefreshToken, refresh.ID)
+	if err != nil {
+		if errors.Is(err, database.ErrNoRowsAffected) {
 			tracer.SetError(span, err)
+			logger.Warn(ctx, err, "no rows affected when trying to delete old refresh token")
+		} else {
+			tracer.SetError(span, err)
+			logger.Error(ctx, err, "failed to delete old refresh token")
 			return err
 		}
 	}
-	now := time.Now().UTC()
 
-	_, err = r.writer.Exec(ctx, false, tx, InsertRefreshToken, newToken, userId, now.Format(time.RFC3339), expiresAt.UTC().Format(time.RFC3339))
+	now := time.Now()
+	_, err = r.writer.Exec(ctx, false, tx, InsertRefreshToken, newToken, userId, now, expiresAt)
 	if err != nil {
 		tracer.SetError(span, err)
 		return err
@@ -78,7 +112,7 @@ func (r *repository) UpdateRefreshToken(ctx context.Context, tx *sql.Tx, userId 
 	return nil
 }
 
-func (r *repository) RegisterAccount(ctx context.Context, tx *sql.Tx, user entity.User) error {
+func (r *repository) RegisterAccount(ctx context.Context, tx *sql.Tx, user *entity.UserCredential) error {
 	caller := "repository::register_account"
 	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
@@ -86,13 +120,14 @@ func (r *repository) RegisterAccount(ctx context.Context, tx *sql.Tx, user entit
 	id, err := r.writer.Exec(ctx, true, tx, InsertUser, user.Username, user.Password)
 	if err != nil {
 		tracer.SetError(span, err)
+		logger.Error(ctx, err, "failed to register user account")
 		return err
 	}
 	user.ID = id
 	return nil
 }
 
-func (r *repository) FindByUserAndPassword(ctx context.Context, username string, password string) (*entity.User, error) {
+func (r *repository) FindByUserAndPassword(ctx context.Context, username string, password string) (*entity.UserCredential, error) {
 	caller := "repository::find_by_user_and_password"
 	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
@@ -104,15 +139,13 @@ func (r *repository) FindByUserAndPassword(ctx context.Context, username string,
 		return nil, err
 	}
 	if user.ID == 0 {
-		msg := message.ErrUserNotFound
-		tracer.SetError(span, msg.GetError())
-		return nil, httperrors.NewHttpError(ctx, http.StatusUnauthorized, msg, msg.GetError())
+		return nil, ErrNotFound
 	}
 
 	return user.ToEntity(), nil
 }
 
-func (r *repository) ListUsers(ctx context.Context, offset int, limit int) ([]*entity.User, bool, error) {
+func (r *repository) ListUsers(ctx context.Context, offset int, limit int) ([]*entity.UserCredential, bool, error) {
 	caller := "repository::list_users"
 	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
@@ -127,7 +160,7 @@ func (r *repository) ListUsers(ctx context.Context, offset int, limit int) ([]*e
 		return nil, false, err
 	}
 
-	var users []*entity.User
+	var users []*entity.UserCredential
 	for rows.Next() {
 		user := model.User{}
 		err = rows.Scan(&user.ID, &user.Username, &user.Password)

@@ -16,6 +16,14 @@ type (
 	memoryRepository struct{}
 )
 
+func (m memoryRepository) DeleteRefreshToken(ctx context.Context, tx *sql.Tx, userId int64) error {
+	if _, ok := tokens[userId]; ok {
+		delete(tokens, userId)
+		return nil
+	}
+	return nil
+}
+
 var users []model.User
 var tokens map[int64]model.RefreshToken
 
@@ -65,7 +73,7 @@ func (m memoryRepository) GetRefreshToken(ctx context.Context, userID int64, ref
 	return nil, nil
 }
 
-func (m memoryRepository) RegisterAccount(ctx context.Context, tx *sql.Tx, user entity.User) error {
+func (m memoryRepository) RegisterAccount(ctx context.Context, tx *sql.Tx, user *entity.UserCredential) error {
 	for _, value := range users {
 		if value.Username == user.Username {
 			msg := message.ErrDuplicateUser
@@ -85,7 +93,7 @@ func (m memoryRepository) RegisterAccount(ctx context.Context, tx *sql.Tx, user 
 	return nil
 }
 
-func (m memoryRepository) FindByUserAndPassword(ctx context.Context, username string, password string) (*entity.User, error) {
+func (m memoryRepository) FindByUserAndPassword(ctx context.Context, username string, password string) (*entity.UserCredential, error) {
 	for _, usr := range users {
 		if usr.Username == username &&
 			usr.Password == password {

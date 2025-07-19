@@ -26,9 +26,9 @@ func (e ErrorMessage) Format(input ...any) ErrorMessage {
 }
 
 const SERVICE = "AUTH"
-const ERR_PREFIX = "ERR" + SERVICE
-const WARN_PREFIX = "WARN" + SERVICE
-const INFO_PREFIX = "INFO" + SERVICE
+const ERR_PREFIX = "E" + SERVICE
+const WARN_PREFIX = "W" + SERVICE
+const INFO_PREFIX = "I" + SERVICE
 
 var (
 	ErrLoginRequired = ErrorMessage{
@@ -46,7 +46,7 @@ var (
 	}
 	ErrTokenExpired = ErrorMessage{
 		Code:        WARN_PREFIX + "0003",
-		UserMessage: "Token expired",
+		UserMessage: "ID expired",
 	}
 	ErrUserNotFound = ErrorMessage{
 		Code:        WARN_PREFIX + "0004",
@@ -56,5 +56,10 @@ var (
 	ErrDuplicateUser = ErrorMessage{
 		Code:        ERR_PREFIX + "0005",
 		UserMessage: "User already exists",
+	}
+
+	ErrRefreshNotFound = ErrorMessage{
+		Code:        WARN_PREFIX + "0006",
+		UserMessage: "Refresh token not found",
 	}
 )

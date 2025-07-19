@@ -7,9 +7,12 @@ const (
 	ListUsers                     = `SELECT u.ID as id, u.Username as username, u.Password as password FROM Users u LIMIT ? OFFSET ?`
 	// Table RefreshTokens
 	FindRefreshToken = `
-		SELECT r.ID as id, r.User_ID as user_id, r.CreatedAt as created_at, r.ExpiresAt as expires_at
+		SELECT r.ID as id, 
+		       r.User_ID as user_id, 
+		       r.CreatedAt as created_at, 
+		       r.ExpiresAt as expires_at
 		FROM RefreshTokens r
-		WHERE ExpiresAt < ?
+		WHERE ExpiresAt > ?
 	`
 	FindRefreshTokenAddUserID = `AND r.User_ID = ?`
 

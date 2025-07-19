@@ -31,6 +31,13 @@ func (c *memory) IsAlive() bool {
 	return true
 }
 
+func (c *memory) Delete(ctx context.Context, key string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cache.Delete(key)
+	return nil
+}
+
 func (c *memory) Set(ctx context.Context, key string, i interface{}, duration time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

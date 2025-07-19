@@ -16,7 +16,8 @@ type (
 
 func (t RefreshToken) ToEntity() *entity.RefreshToken {
 	return &entity.RefreshToken{
-		ID:     t.ID,
-		UserID: t.UserID,
+		ID:        t.ID,
+		UserID:    t.UserID,
+		ExpiresAt: t.ExpiresAt,
 	}
 }

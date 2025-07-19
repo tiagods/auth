@@ -22,7 +22,7 @@ func Init() *zap.Logger {
 	config := zap.NewProductionConfig()
 	level, _ := zapcore.ParseLevel(env.GetEnvAsString(env.LOG_LEVEL, env.DEFAULT_LOG))
 	config.Level.SetLevel(level)
-	zap.ReplaceGlobals(zap.Must(config.Build()))
+	zap.ReplaceGlobals(zap.Must(config.Build()).WithOptions(zap.AddCallerSkip(1)))
 	zap.L().Info("logger construction succeeded")
 	return zap.L()
 }

@@ -3,7 +3,6 @@ package httperrors
 import (
 	"context"
 	"net/http"
-	"strconv"
 
 	"github.com/tiagods/auth/internal/infra/logger"
 	"github.com/tiagods/auth/internal/infra/message"
@@ -33,7 +32,7 @@ func NewHttpError(ctx context.Context, statusCode int, message message.ErrorMess
 
 	return HttpError{
 		StatusCode:    statusCode,
-		Code:          strconv.Itoa(statusCode),
+		Code:          message.Code,
 		Message:       message,
 		InternalError: err,
 	}

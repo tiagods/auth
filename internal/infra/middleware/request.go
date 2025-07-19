@@ -3,12 +3,13 @@ package middleware
 import (
 	"context"
 	"errors"
+	"net/http"
+
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/tiagods/auth/internal/infra/httperrors"
 	"github.com/tiagods/auth/internal/infra/logger"
 	"github.com/tiagods/auth/internal/infra/requestcontext"
-	"net/http"
 )
 
 func RequestContext(next echo.HandlerFunc) echo.HandlerFunc {
@@ -43,7 +44,7 @@ func HTTPErrorHandler(err error, c echo.Context) {
 	if errors.As(err, &he) {
 		resultCode = he.Code
 	}
-	var httpError *httperrors.HttpError
+	var httpError httperrors.HttpError
 	if ok := errors.As(err, &httpError); ok {
 		message = httpError.Error()
 		resultCode = httpError.StatusCode

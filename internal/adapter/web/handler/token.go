@@ -28,7 +28,22 @@ func (h *TokenHandler) Register(c echo.Context) error {
 	caller := "handler::register"
 	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
 	defer span.End()
-	return nil
+
+	register := &request.Register{}
+	if err := extractor.Extractor(c, register); err != nil {
+		tracer.SetError(span, err)
+		return err
+	}
+
+	logger.Info(ctx, fmt.Sprintf("Request POST at %s", c.Path()))
+
+	result, err := h.service.Register(ctx, register)
+	if err != nil {
+		tracer.SetError(span, err)
+		return err
+	}
+
+	return c.JSON(http.StatusCreated, result)
 }
 
 func (h *TokenHandler) Login(c echo.Context) error {
@@ -55,7 +70,28 @@ func (h *TokenHandler) Login(c echo.Context) error {
 	return c.JSON(http.StatusCreated, result)
 }
 
-func (h *TokenHandler) RefreshToken(c echo.Context) error {
+func (h *TokenHandler) RevokeToken(c echo.Context) error {
+	ctx := c.Request().Context()
+	caller := "handler::revoke_token"
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
+	defer span.End()
+
+	tokenReq := &request.RefreshToken{}
+	if err := extractor.Extractor(c, tokenReq); err != nil {
+		tracer.SetError(span, err)
+		return err
+	}
+
+	logger.Info(ctx, fmt.Sprintf("Request DELETE at %s", c.Path()))
+
+	if err := h.service.RevokeToken(ctx, tokenReq); err != nil {
+		tracer.SetError(span, err)
+		return err
+	}
+	return c.NoContent(http.StatusOK)
+}
+
+func (h *TokenHandler) RecreateToken(c echo.Context) error {
 	ctx := c.Request().Context()
 	caller := "handler::refresh_token"
 	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
@@ -69,10 +105,28 @@ func (h *TokenHandler) RefreshToken(c echo.Context) error {
 
 	logger.Info(ctx, fmt.Sprintf("Request POST at %s", c.Path()))
 
-	result, err := h.service.RefreshToken(ctx, tokenReq)
+	result, err := h.service.RecreateToken(ctx, tokenReq)
 	if err != nil {
 		tracer.SetError(span, err)
 		return err
 	}
 	return c.JSON(http.StatusCreated, result)
+}
+
+func (h *TokenHandler) ValidateToken(c echo.Context) error {
+	ctx := c.Request().Context()
+	caller := "handler::validate_token"
+	ctx, span := tracer.Start(ctx, caller, tracer.SpanKindCPU)
+	defer span.End()
+
+	authorization := c.Request().Header.Get("Authorization")
+
+	logger.Info(ctx, fmt.Sprintf("Request GET at %s", c.Path()))
+
+	if err := h.service.ValidateToken(ctx, authorization); err != nil {
+		tracer.SetError(span, err)
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "token is valid"})
 }

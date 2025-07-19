@@ -14,6 +14,16 @@ type redisCache struct {
 	client *redis.Client
 }
 
+func (r *redisCache) Delete(ctx context.Context, key string) error {
+	err := r.client.Del(ctx, key).Err()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return ErrNotFound
+		}
+	}
+	return nil
+}
+
 func NewRedis() Repository {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",

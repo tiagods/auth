@@ -10,8 +10,8 @@ type (
 	}
 )
 
-func (u User) ToEntity() *entity.User {
-	return &entity.User{
+func (u User) ToEntity() *entity.UserCredential {
+	return &entity.UserCredential{
 		ID:       u.ID,
 		Username: u.Username,
 		Password: u.Password,

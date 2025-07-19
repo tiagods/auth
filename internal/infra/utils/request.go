@@ -34,3 +34,10 @@ func GetCidFromEchoContext(eCtx echo.Context) string {
 func GetTenantFromEchoContext(eCtx echo.Context) string {
 	return GetTenantFromContext(eCtx.Request().Context())
 }
+
+func GetRequestContext(eCtx echo.Context) requestcontext.RequestContext {
+	if rq, ok := eCtx.Request().Context().Value(requestcontext.ContextKey).(requestcontext.RequestContext); ok {
+		return rq
+	}
+	return requestcontext.RequestContext{}
+}

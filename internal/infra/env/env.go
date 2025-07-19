@@ -18,7 +18,7 @@ const (
 	ENVIRONMENT  = "ENVIRONMENT"
 	DEFAULT_ENV  = "local"
 	PORT         = "PORT"
-	DEFAULT_PORT = "8080"
+	DEFAULT_PORT = 8080
 
 	SECRET_KEY     = "SECRET_KEY"
 	DEFAULT_SECRET = "secret"
@@ -61,6 +61,10 @@ func GetEnvAsInt64(value string, defaultValue int64) int64 {
 		return defaultValue
 	}
 	return result
+}
+
+func GetEnvAsInt(value string, defaultValue int) int {
+	return int(GetEnvAsInt64(value, int64(defaultValue)))
 }
 
 func GetEnvAsFloat64(value string, defaultValue float64) float64 {
